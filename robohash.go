@@ -4,12 +4,16 @@ import (
 	"crypto/sha512"
 	"encoding/binary"
 	"encoding/hex"
+	"fmt"
 	"image"
 	"image/jpeg"
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
+	"sort"
 	"strconv"
+	"strings"
 
 	"github.com/nfnt/resize"
 )
@@ -56,7 +60,7 @@ func (r *resource) createHahes(count int) {
 	}
 }
 
-//listDirs
+//listDirs dir list
 func listDirs(path string) []string {
 	rtn := []string{}
 	files, err := ioutil.ReadDir(path)
@@ -70,8 +74,19 @@ func listDirs(path string) []string {
 	return rtn
 }
 
-func getListOfFiles(path string) {
-
+//getListOfFiles dir file list
+func getListOfFiles(path string) []string {
+	// chosenFiles := []string{}
+	// directories := []string{}
+	// fileList := []string{}
+	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
+		fmt.Println(info.Name())
+		return nil
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return []string{}
 }
 
 //assemble Build our Robot! Returns the robot image itself.
@@ -85,15 +100,14 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	// }
 
 	if roboset == "set1" {
-		if isContain(colors, r.Colors) {
+		if exist, _ := isContain(colors, r.Colors); exist {
 			roboset = "set1/" + colors
 		} else {
-			radomColor := r.Colors[r.Hasharray[0]%int16(len(r.Colors))]
-			roboset = "set1/" + radomColor
+			roboset = "set1/" + r.Colors[r.Hasharray[0]%int16(len(r.Colors))]
 		}
 	}
 
-	if isContain(bgset, r.BGSets) {
+	if exist, _ := isContain(bgset, r.BGSets); exist {
 		bgset = bgset
 	} else if bgset == "any" {
 		bgset = r.BGSets[r.Hasharray[2]%int16(len(r.BGSets))]
@@ -109,13 +123,20 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	if y == 0 {
 		y = 300
 	}
-
-	roboparts := listDirs("material/sets/" + roboset)
-
+	setsDir := "material/sets/" + roboset + "/"
+	roboparts := getListOfFiles(setsDir)
+	roboparts = sortSets(roboparts)
 	if bgset != "" {
-
+		bgList := []string{}
+		backgroud := listDirs("material/sets/" + bgset)
+		for _, v := range backgroud {
+			if !strings.HasPrefix(v, ".") {
+				bgList = append(bgList, "material/sets/"+bgset+v)
+			}
+		}
+		backgroud = []string{bgList[r.Hasharray[3]%int16(len(bgList))]}
 	}
-
+	fmt.Println(roboparts[0])
 	imgFile, err := os.Open(roboparts[0])
 	if err != nil {
 		log.Fatalln(err)
@@ -126,7 +147,7 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 		log.Fatalln(err)
 		return
 	}
-	imgFile.Close()
+	defer imgFile.Close()
 
 	resizeImg := resize.Resize(1024, 1024, imgDec, resize.Lanczos3)
 
@@ -140,13 +161,24 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	}
 }
 
-func isContain(a string, b []string) bool {
-	for _, v := range b {
-		if a == v {
-			return true
+//isContain is slice contain obj
+func isContain(obj string, slice []string) (bool, int) {
+	for k, v := range slice {
+		if obj == v {
+			return true, k
 		}
 	}
-	return false
+	return false, -1
+}
+
+//isContain is slice contain like obj
+func isContainLike(obj string, slice []string) (bool, int) {
+	for k, v := range slice {
+		if strings.Contains(v, obj) {
+			return true, k
+		}
+	}
+	return false, -1
 }
 
 func Hex2Dec(val string) int {
@@ -155,4 +187,24 @@ func Hex2Dec(val string) int {
 		log.Fatalln(err)
 	}
 	return int(n)
+}
+
+//sortSets origin python: roboparts.sort(key=lambda x: x.split("#")[1])
+func sortSets(sets []string) []string {
+	var temp, rtn []string
+	for _, v := range sets {
+		temp = append(temp, strings.Split(v, "#")[1])
+	}
+	sort.Strings(temp)
+	//E.g. [01Body 02Face Accessory Eyes Mouth]
+	for _, v := range temp {
+		if exist, key := isContainLike(v, sets); exist {
+			rtn = append(rtn, sets[key])
+		}
+	}
+	if len(rtn) == 0 {
+		log.Fatal("sortSets length 0")
+	}
+	//[003#01Body 004#02Face 002#Accessory 001#Eyes 000#Mouth]
+	return rtn
 }

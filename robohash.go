@@ -2,7 +2,6 @@ package gorobohash
 
 import (
 	"crypto/sha512"
-	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"image"
@@ -16,7 +15,6 @@ import (
 	"strconv"
 	"strings"
 
-	_ "image/jpeg"
 	_ "image/png"
 
 	"github.com/nfnt/resize"
@@ -28,7 +26,7 @@ type resource struct {
 	BGSets    []string
 	Colors    []string
 	Format    string
-	Hasharray []int16
+	Hasharray []int64
 	HexDigest string
 	Iter      int
 	HashCount int
@@ -62,7 +60,11 @@ func (r *resource) createHahes(count int) {
 		blockSize := len(r.HexDigest) / count
 		currentStart := (1+i)*blockSize - blockSize
 		currentEnd := (1 + i) * blockSize
-		r.Hasharray = append(r.Hasharray, int16(binary.BigEndian.Uint16([]byte(r.HexDigest[currentStart:currentEnd]))))
+		temp, err := strconv.ParseInt(r.HexDigest[currentStart:currentEnd], 16, 64)
+		if err != nil {
+			log.Fatalln(err)
+		}
+		r.Hasharray = append(r.Hasharray, temp)
 	}
 }
 
@@ -105,7 +107,7 @@ func (r *resource) getListOfFiles(path string) []string {
 		if err != nil {
 			log.Fatal(err)
 		}
-		chosenFiles = append(chosenFiles, filesInDir[r.Hasharray[r.Iter]%int16(len(filesInDir))])
+		chosenFiles = append(chosenFiles, filesInDir[r.Hasharray[r.Iter]%int64(len(filesInDir))])
 		r.Iter += 1
 	}
 	//chosenFiles E.g. [material\sets\set1\blue\003#01Body\000#blue_body-10.png material\sets\set1\blue\003#01Body\007#blue_body-06.png material\sets\set1\blue\004#02Face\000#blue_face-07.png material\sets\set1\blue\002#Accessory\002#blue_accessory-07.png material\sets\set1\blue\001#Eyes\009#blue_eyes-04.png material\sets\set1\blue\000#Mouth\009#blue_mouth-03.png]
@@ -113,10 +115,10 @@ func (r *resource) getListOfFiles(path string) []string {
 }
 
 //assemble Build our Robot! Returns the robot image itself.
-func (r *resource) Assemble(roboset, colors, bgset, format string, x, y int) {
+func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	roboset = r.Sets[0]
 	if roboset == "any" {
-		roboset = r.Sets[r.Hasharray[1]%int16(len(r.Sets))]
+		roboset = r.Sets[r.Hasharray[1]%int64(len(r.Sets))]
 	}
 	// if isContain(roboset, r.Sets) {
 	// 	roboset = roboset
@@ -125,13 +127,13 @@ func (r *resource) Assemble(roboset, colors, bgset, format string, x, y int) {
 		if exist, _ := isContain(colors, r.Colors); exist {
 			roboset = "set1/" + colors
 		} else {
-			roboset = "set1/" + r.Colors[r.Hasharray[0]%int16(len(r.Colors))]
+			roboset = "set1/" + r.Colors[r.Hasharray[0]%int64(len(r.Colors))]
 		}
 	}
 	if exist, _ := isContain(bgset, r.BGSets); exist {
 		bgset = bgset
 	} else if bgset == "any" {
-		bgset = r.BGSets[r.Hasharray[2]%int16(len(r.BGSets))]
+		bgset = r.BGSets[r.Hasharray[2]%int64(len(r.BGSets))]
 	}
 	if format == "" {
 		format = r.Format
@@ -153,7 +155,7 @@ func (r *resource) Assemble(roboset, colors, bgset, format string, x, y int) {
 				bgList = append(bgList, "material/sets/"+bgset+v)
 			}
 		}
-		background = bgList[r.Hasharray[3]%int16(len(bgList))]
+		background = bgList[r.Hasharray[3]%int64(len(bgList))]
 	}
 	// fmt.Println(roboparts)
 	imgFile, err := os.Open(roboparts[0])

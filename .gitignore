@@ -1,4 +1,6 @@
 output/*.jpg
+output/*.jpeg
 output/*.png
 output/*.bmp
 origin
+.DS_Store

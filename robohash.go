@@ -50,7 +50,7 @@ func NewResource(name string) *resource {
 	r.Format = "png"
 	r.Iter = 4
 	r.Name = name
-	log.Printf("%+v", r)
+	// log.Printf("%+v", r)
 	return r
 }
 
@@ -87,7 +87,7 @@ func (r *resource) getListOfFiles(path string) []string {
 	chosenFiles := []string{}
 	directories := []string{}
 	err := filepath.Walk(path, func(path string, info os.FileInfo, err error) error {
-		if info.IsDir() {
+		if info.IsDir() && strings.Contains(path, "#") {
 			directories = append(directories, path)
 		}
 		return nil
@@ -116,13 +116,11 @@ func (r *resource) getListOfFiles(path string) []string {
 
 //assemble Build our Robot! Returns the robot image itself.
 func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
-	roboset = r.Sets[0]
 	if roboset == "any" {
 		roboset = r.Sets[r.Hasharray[1]%int64(len(r.Sets))]
+	} else if status, _ := isContain(roboset, r.Sets); !status {
+		roboset = r.Sets[0]
 	}
-	// if isContain(roboset, r.Sets) {
-	// 	roboset = roboset
-	// }
 	if roboset == "set1" {
 		if exist, _ := isContain(colors, r.Colors); exist {
 			roboset = "set1/" + colors
@@ -132,7 +130,8 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	}
 	if exist, _ := isContain(bgset, r.BGSets); exist {
 		bgset = bgset
-	} else if bgset == "any" {
+	}
+	if bgset == "any" {
 		bgset = r.BGSets[r.Hasharray[2]%int64(len(r.BGSets))]
 	}
 	if format == "" {
@@ -149,15 +148,14 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 	var background string
 	if bgset != "" {
 		bgList := []string{}
-		temp := listDirs("material/sets/" + bgset)
+		temp := listDirs("material/backgrounds/" + bgset)
 		for _, v := range temp {
 			if !strings.HasPrefix(v, ".") {
-				bgList = append(bgList, "material/sets/"+bgset+v)
+				bgList = append(bgList, "material/backgrounds/"+bgset+"/"+v)
 			}
 		}
 		background = bgList[r.Hasharray[3]%int64(len(bgList))]
 	}
-	// fmt.Println(roboparts)
 	imgFile, err := os.Open(roboparts[0])
 	if err != nil {
 		log.Fatalln(err)
@@ -182,9 +180,9 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 		}
 		tempFile.Close()
 		tempResizeImg := resize.Resize(1024, 1024, tempImg, resize.Lanczos3)
-
-		draw.Draw(newImg, newImg.Bounds(), resizeImg, resizeImg.Bounds().Min, draw.Over)
+		draw.Draw(newImg, newImg.Bounds(), resizeImg, tempImg.Bounds().Min, draw.Over)
 		draw.Draw(newImg, newImg.Bounds(), tempResizeImg, tempImg.Bounds().Min, draw.Over)
+
 	}
 	if bgset != "" {
 		imgFile, err := os.Open(background)
@@ -228,14 +226,6 @@ func isContainLike(obj string, slice []string) (bool, int) {
 		}
 	}
 	return false, -1
-}
-
-func Hex2Dec(val string) int {
-	n, err := strconv.ParseUint(val, 16, 32)
-	if err != nil {
-		log.Fatalln(err)
-	}
-	return int(n)
 }
 
 //sortSets origin python: roboparts.sort(key=lambda x: x.split("#")[1])

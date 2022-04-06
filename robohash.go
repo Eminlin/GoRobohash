@@ -46,6 +46,17 @@ func NewResource(name string) *resource {
 	}
 	r.HexDigest = hex.EncodeToString(h.Sum(nil))
 	r.createHahes(r.HashCount)
+	ex, err := os.Executable()
+	if err != nil {
+		log.Fatalln(err)
+	}
+	fmt.Println(ex)
+	expath := filepath.Dir(ex)
+	fmt.Println(expath)
+
+	dir, _ := os.Getwd()
+	fmt.Println(dir)
+	// r.BGSets = listDirs(expath + "\\material\\sets")
 	r.Sets = listDirs("material/sets")
 	r.BGSets = listDirs("material/backgrounds")
 	r.Colors = listDirs("material/sets/set1")

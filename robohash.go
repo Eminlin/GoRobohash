@@ -113,7 +113,7 @@ func (r *resource) getListOfFiles(path string) []string {
 }
 
 //assemble Build our Robot! Returns the robot image itself.
-func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
+func (r *resource) Assemble(roboset, colors, bgset, format string, x, y int) {
 	roboset = r.Sets[0]
 	if roboset == "any" {
 		roboset = r.Sets[r.Hasharray[1]%int16(len(r.Sets))]

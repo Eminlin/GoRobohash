@@ -1,4 +1,4 @@
-module github.com/Eminlin/GoRobohash
+module GoRobohash
 
 go 1.17
 

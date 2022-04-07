@@ -1,8 +1,9 @@
 package main
 
 import (
-	gorobohash "GoRobohash"
 	"fmt"
+
+	gorobohash "github.com/Eminlin/GoRobohash"
 )
 
 func main() {

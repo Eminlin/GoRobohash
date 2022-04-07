@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -22,49 +23,81 @@ import (
 
 //resource define resource path
 type resource struct {
-	// ResourceDir string
-	BGSets    []string
-	Colors    []string
-	Format    string
-	Hasharray []int64
-	HexDigest string
-	Iter      int
-	HashCount int
-	Sets      []string
-	Name      string
+	bgSets       []string
+	colors       []string
+	format       string
+	hashArray    []int64
+	hexDigest    string
+	iter         int
+	hashCount    int
+	sets         []string
+	name         string
+	materialPath string
+	AssembleOptions
 }
 
-//newResource constructor
-func NewResource(name string) *resource {
+type AssembleOptions struct {
+	RoboSet, Colors, BgSet string //optional
+	Format                 string //optional default png
+	OutputPath             string //optional default current dir
+	X                      int    //optional default 300
+	Y                      int    //optional default 300
+}
+
+//newResource new resource
+func NewResource(text string, options *AssembleOptions) *resource {
+	if text == "" {
+		log.Fatalln("text is empty, you must set text")
+	}
 	r := &resource{}
-	r.HashCount = 11
+	r.hashCount = 11
 	h := sha512.New()
-	if _, err := h.Write([]byte(name)); err != nil {
+	if _, err := h.Write([]byte(text)); err != nil {
 		log.Fatalln(err)
 	}
-	r.HexDigest = hex.EncodeToString(h.Sum(nil))
-	r.createHahes(r.HashCount)
-	r.Sets = listDirs("material/sets")
-	r.BGSets = listDirs("material/backgrounds")
-	r.Colors = listDirs("material/sets/set1")
+	r.hexDigest = hex.EncodeToString(h.Sum(nil))
+	r.createHahes(r.hashCount)
+	_, filename, _, ok := runtime.Caller(0)
+	if !ok {
+		log.Fatalln("runtime.Caller(0) failed")
+	}
+	r.materialPath = filepath.Dir(filename) + "/" + "material"
+	r.sets = listDirs(r.materialPath + "/sets")
+	r.bgSets = listDirs(r.materialPath + "/backgrounds")
+	r.colors = listDirs(r.materialPath + "/sets/set1")
 	r.Format = "png"
-	r.Iter = 4
-	r.Name = name
-	// log.Printf("%+v", r)
+	r.iter = 4
+	r.name = text
+	if options.Format != "" {
+		r.Format = "png"
+	}
+	if options.X == 0 {
+		r.X = 300
+	}
+	if options.Y == 0 {
+		r.Y = 300
+	}
+	if options.BgSet == "bmp" {
+		log.Fatalln("bmp is not supported yet")
+	}
+	if options.OutputPath == "" {
+		r.OutputPath = "./"
+	}
+	r.OutputPath = filepath.Dir(options.OutputPath)
 	return r
 }
 
 //createHahes createHahes
 func (r *resource) createHahes(count int) {
 	for i := 0; i < count; i++ {
-		blockSize := len(r.HexDigest) / count
+		blockSize := len(r.hexDigest) / count
 		currentStart := (1+i)*blockSize - blockSize
 		currentEnd := (1 + i) * blockSize
-		temp, err := strconv.ParseInt(r.HexDigest[currentStart:currentEnd], 16, 64)
+		temp, err := strconv.ParseInt(r.hexDigest[currentStart:currentEnd], 16, 64)
 		if err != nil {
 			log.Fatalln(err)
 		}
-		r.Hasharray = append(r.Hasharray, temp)
+		r.hashArray = append(r.hashArray, temp)
 	}
 }
 
@@ -107,68 +140,56 @@ func (r *resource) getListOfFiles(path string) []string {
 		if err != nil {
 			log.Fatal(err)
 		}
-		chosenFiles = append(chosenFiles, filesInDir[r.Hasharray[r.Iter]%int64(len(filesInDir))])
-		r.Iter += 1
+		chosenFiles = append(chosenFiles, filesInDir[r.hashArray[r.iter]%int64(len(filesInDir))])
+		r.iter += 1
 	}
 	//chosenFiles E.g. [material\sets\set1\blue\003#01Body\000#blue_body-10.png material\sets\set1\blue\003#01Body\007#blue_body-06.png material\sets\set1\blue\004#02Face\000#blue_face-07.png material\sets\set1\blue\002#Accessory\002#blue_accessory-07.png material\sets\set1\blue\001#Eyes\009#blue_eyes-04.png material\sets\set1\blue\000#Mouth\009#blue_mouth-03.png]
 	return chosenFiles
 }
 
-//assemble Build our Robot! Returns the robot image itself.
-func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
-	if roboset == "any" {
-		roboset = r.Sets[r.Hasharray[1]%int64(len(r.Sets))]
-	} else if status, _ := isContain(roboset, r.Sets); !status {
-		roboset = r.Sets[0]
+//Assemble Build our Robot! Return the robot image name itself.
+func (r *resource) Assemble() (string, error) {
+	if r.RoboSet == "any" {
+		r.RoboSet = r.sets[r.hashArray[1]%int64(len(r.sets))]
+	} else if status, _ := isContain(r.RoboSet, r.sets); !status {
+		r.RoboSet = r.sets[0]
 	}
-	if roboset == "set1" {
-		if exist, _ := isContain(colors, r.Colors); exist {
-			roboset = "set1/" + colors
+	if r.RoboSet == "set1" {
+		if exist, _ := isContain(r.Colors, r.colors); exist {
+			r.RoboSet = "set1/" + r.Colors
 		} else {
-			roboset = "set1/" + r.Colors[r.Hasharray[0]%int64(len(r.Colors))]
+			r.RoboSet = "set1/" + r.colors[r.hashArray[0]%int64(len(r.colors))]
 		}
 	}
-	if exist, _ := isContain(bgset, r.BGSets); exist {
-		bgset = bgset
+	if r.BgSet == "any" {
+		r.BgSet = r.bgSets[r.hashArray[2]%int64(len(r.bgSets))]
 	}
-	if bgset == "any" {
-		bgset = r.BGSets[r.Hasharray[2]%int64(len(r.BGSets))]
-	}
-	if format == "" {
-		format = r.Format
-	}
-	if x == 0 {
-		x = 300
-	}
-	if y == 0 {
-		y = 300
-	}
-	roboparts := r.getListOfFiles("material/sets/" + roboset + "/")
+	roboparts := r.getListOfFiles(r.materialPath + "/sets/" + r.RoboSet + "/")
 	roboparts = sortSets(roboparts)
 	var background string
-	if bgset != "" {
+	if r.BgSet != "" {
 		bgList := []string{}
-		temp := listDirs("material/backgrounds/" + bgset)
+		temp := listDirs(r.materialPath + "/backgrounds/" + r.BgSet)
 		for _, v := range temp {
 			if !strings.HasPrefix(v, ".") {
-				bgList = append(bgList, "material/backgrounds/"+bgset+"/"+v)
+				bgList = append(bgList, r.materialPath+"/backgrounds/"+r.BgSet+"/"+v)
 			}
 		}
-		background = bgList[r.Hasharray[3]%int64(len(bgList))]
+		background = bgList[r.hashArray[3]%int64(len(bgList))]
 	}
+	//roboparts[0]: material\sets\set1\white\003#01Body\006#white_body-05.png
 	imgFile, err := os.Open(roboparts[0])
 	if err != nil {
-		log.Fatalln(err)
-		return
+		return "", err
 	}
 	imgDec, _, err := image.Decode(imgFile)
 	if err != nil {
-		log.Fatalln(err)
-		return
+		return "", err
 	}
 	defer imgFile.Close()
 	resizeImg := resize.Resize(1024, 1024, imgDec, resize.Lanczos3)
 	newImg := image.NewRGBA(image.Rect(0, 0, 1024, 1024))
+	draw.Draw(newImg, newImg.Bounds(), resizeImg, resizeImg.Bounds().Min, draw.Over)
 	for _, v := range roboparts {
 		tempFile, err := os.Open(v)
 		if err != nil {
@@ -180,32 +201,33 @@ func (r *resource) assemble(roboset, colors, bgset, format string, x, y int) {
 		}
 		tempFile.Close()
 		tempResizeImg := resize.Resize(1024, 1024, tempImg, resize.Lanczos3)
-		draw.Draw(newImg, newImg.Bounds(), resizeImg, tempImg.Bounds().Min, draw.Over)
-		draw.Draw(newImg, newImg.Bounds(), tempResizeImg, tempImg.Bounds().Min, draw.Over)
-
+		draw.Draw(newImg, newImg.Bounds(), newImg, newImg.Bounds().Min, draw.Over)
+		draw.Draw(newImg, newImg.Bounds(), tempResizeImg, newImg.Bounds().Min, draw.Over)
 	}
-	if bgset != "" {
+	if r.BgSet != "" {
 		imgFile, err := os.Open(background)
 		if err != nil {
-			log.Fatalln(err)
-			return
+			return "", err
 		}
 		tempImg, _, err := image.Decode(imgFile)
 		if err != nil {
-			log.Fatal(err)
+			return "", err
 		}
 		imgFile.Close()
 		tempResizeImg := resize.Resize(1024, 1024, tempImg, resize.Lanczos3)
 		draw.Draw(newImg, newImg.Bounds(), tempResizeImg, tempImg.Bounds().Min, draw.Over)
 	}
-	out, err := os.Create(fmt.Sprintf("output/%s.%s", r.Name, format))
+	output := fmt.Sprintf("%s/%s.%s", r.OutputPath, r.name, r.Format)
+	out, err := os.Create(output)
 	if err != nil {
-		log.Fatalln(err)
+		return "", err
 	}
 	defer out.Close()
-	if err := jpeg.Encode(out, newImg, nil); err != nil {
-		log.Fatalln(err)
+	resizeImg = resize.Resize(uint(r.X), uint(r.Y), newImg, resize.Lanczos3)
+	if err := jpeg.Encode(out, resizeImg, nil); err != nil {
+		return "", err
 	}
+	return output, nil
 }
 
 //isContain is slice contain obj

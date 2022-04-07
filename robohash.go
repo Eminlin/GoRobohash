@@ -1,12 +1,15 @@
 package gorobohash
 
 import (
+	"bytes"
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"fmt"
 	"image"
 	"image/draw"
 	"image/jpeg"
+	"image/png"
 	"io/ioutil"
 	"log"
 	"os"
@@ -38,7 +41,6 @@ type resource struct {
 
 type AssembleOptions struct {
 	RoboSet, Colors, BgSet string //optional
-	Format                 string //optional default png
 	OutputPath             string //optional default current dir
 	X                      int    //optional default 300
 	Y                      int    //optional default 300
@@ -65,12 +67,9 @@ func NewResource(text string, options *AssembleOptions) *resource {
 	r.sets = listDirs(r.materialPath + "/sets")
 	r.bgSets = listDirs(r.materialPath + "/backgrounds")
 	r.colors = listDirs(r.materialPath + "/sets/set1")
-	r.Format = "png"
+	r.format = "png"
 	r.iter = 4
 	r.name = text
-	if options.Format != "" {
-		r.Format = "png"
-	}
 	if options.X == 0 {
 		r.X = 300
 	}
@@ -147,8 +146,8 @@ func (r *resource) getListOfFiles(path string) []string {
 	return chosenFiles
 }
 
-//Assemble Build our Robot! Return the robot image name itself.
-func (r *resource) Assemble() (string, error) {
+//Assemble the original method build our robot return the robot image
+func (r *resource) AssembleOrigin() (image.Image, error) {
 	if r.RoboSet == "any" {
 		r.RoboSet = r.sets[r.hashArray[1]%int64(len(r.sets))]
 	} else if status, _ := isContain(r.RoboSet, r.sets); !status {
@@ -180,11 +179,11 @@ func (r *resource) Assemble() (string, error) {
 	//roboparts[0]: material\sets\set1\white\003#01Body\006#white_body-05.png
 	imgFile, err := os.Open(roboparts[0])
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	imgDec, _, err := image.Decode(imgFile)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 	defer imgFile.Close()
 	resizeImg := resize.Resize(1024, 1024, imgDec, resize.Lanczos3)
@@ -207,27 +206,91 @@ func (r *resource) Assemble() (string, error) {
 	if r.BgSet != "" {
 		imgFile, err := os.Open(background)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		tempImg, _, err := image.Decode(imgFile)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
 		imgFile.Close()
 		tempResizeImg := resize.Resize(1024, 1024, tempImg, resize.Lanczos3)
 		draw.Draw(newImg, newImg.Bounds(), tempResizeImg, tempImg.Bounds().Min, draw.Over)
 	}
-	output := fmt.Sprintf("%s/%s.%s", r.OutputPath, r.name, r.Format)
+	resizeImg = resize.Resize(uint(r.X), uint(r.Y), newImg, resize.Lanczos3)
+	return resizeImg, nil
+}
+
+//GenerateJPEG generate type jpeg image
+func (r *resource) GenerateJPEG() (string, error) {
+	r.format = "jpeg"
+	i, err := r.AssembleOrigin()
+	if err != nil {
+		return "", err
+	}
+	output := fmt.Sprintf("%s/%s.%s", r.OutputPath, r.name, r.format)
 	out, err := os.Create(output)
 	if err != nil {
 		return "", err
 	}
 	defer out.Close()
-	resizeImg = resize.Resize(uint(r.X), uint(r.Y), newImg, resize.Lanczos3)
-	if err := jpeg.Encode(out, resizeImg, nil); err != nil {
+	if err := jpeg.Encode(out, i, nil); err != nil {
 		return "", err
 	}
 	return output, nil
+}
+
+//GenerateJPG generate type jpg image
+func (r *resource) GenerateJPG() (string, error) {
+	r.format = "jpg"
+	i, err := r.AssembleOrigin()
+	if err != nil {
+		return "", err
+	}
+	output := fmt.Sprintf("%s/%s.%s", r.OutputPath, r.name, r.format)
+	out, err := os.Create(output)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+	if err := jpeg.Encode(out, i, nil); err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+//GeneratePNG generate type png image
+//Recommended to use png format
+func (r *resource) GeneratePNG() (string, error) {
+	r.format = "png"
+	i, err := r.AssembleOrigin()
+	if err != nil {
+		return "", err
+	}
+	output := fmt.Sprintf("%s/%s.%s", r.OutputPath, r.name, r.format)
+	out, err := os.Create(output)
+	if err != nil {
+		return "", err
+	}
+	defer out.Close()
+	if err := png.Encode(out, i); err != nil {
+		return "", err
+	}
+	return output, nil
+}
+
+func (r *resource) GenerateBase64() ([]byte, error) {
+	r.format = "png"
+	i, err := r.AssembleOrigin()
+	if err != nil {
+		return []byte{}, err
+	}
+	buff := bytes.NewBuffer(nil)
+	if err := png.Encode(buff, i); err != nil {
+		return []byte{}, err
+	}
+	dist := make([]byte, base64.StdEncoding.EncodedLen(buff.Len()))
+	base64.StdEncoding.Encode(dist, buff.Bytes())
+	return dist, nil
 }
 
 //isContain is slice contain obj
